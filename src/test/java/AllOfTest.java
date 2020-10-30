@@ -23,7 +23,7 @@ public class AllOfTest {
         // get a list of URLs to call
         final List<String> urls = Files.readAllLines(Paths.get("src/test/resources/urls.txt"));
 
-        // map to a list of Futures containing the body of the websites from these urls
+        // map to a list of Futures containing the static html from these urls
         final List<CompletableFuture<String>> pageContentFutures = urls
             .stream()
             .map(url -> {
@@ -36,6 +36,22 @@ public class AllOfTest {
                         });
                 }
             ).collect(toList());
+
+        //// ---- ANY OF ---- ////
+
+        System.out.println("ANY OF (BEGIN)");
+
+        // call all these futures in parallel and store only the first result in another future
+        CompletableFuture.anyOf(
+            pageContentFutures.toArray(new CompletableFuture[0]))
+            .thenAccept(o -> System.out.println((String) o))
+            .get();
+
+        System.out.println("ANY OF (END)");
+
+        //// ---- ALL OF ---- ////
+
+        System.out.println("ALL OF (BEGIN)");
 
         // call all these futures in parallel and store the result in another future
         CompletableFuture<Void> allFutures = CompletableFuture.allOf(
@@ -54,6 +70,8 @@ public class AllOfTest {
             .filter(pageContent -> pageContent.toLowerCase().contains(term))
             .count());
         System.out.format("'%s' was found in %s websites.\r\n", term.toLowerCase(), countFuture.get());
+
+        System.out.println("ALL OF (END)");
     }
 
     private HttpRequest createRequest(final String url) {
