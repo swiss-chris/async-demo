@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -24,7 +25,7 @@ public class AllOfTest {
         final List<String> urls = Files.readAllLines(Paths.get("src/test/resources/urls.txt"));
 
         // map to a list of Futures containing the static html from these urls
-        final List<CompletableFuture<String>> pageContentFutures = urls
+        final CompletableFuture<String>[] pageContentFuturesArray = urls
             .stream()
             .map(url -> {
                     System.out.println("requesting url = " + url);
@@ -35,16 +36,19 @@ public class AllOfTest {
                             return response.body();
                         });
                 }
-            ).collect(toList());
+            ).toArray(CompletableFuture[]::new);
 
         //// ---- ANY OF ---- ////
 
         System.out.println("ANY OF (BEGIN)");
 
         // call all these futures in parallel and store only the first result in another future
-        CompletableFuture.anyOf(
-            pageContentFutures.toArray(new CompletableFuture[0]))
-            .thenAccept(o -> System.out.println((String) o))
+        CompletableFuture
+            .anyOf(pageContentFuturesArray)
+            .thenAccept(o -> {
+                final String string = (String) o;
+                System.out.println(string.length() > 0 ? string : "EMPTY RESPONSE");
+            })
             .get();
 
         System.out.println("ANY OF (END)");
@@ -53,22 +57,23 @@ public class AllOfTest {
 
         System.out.println("ALL OF (BEGIN)");
 
-        // call all these futures in parallel and store the result in another future
-        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
-            pageContentFutures.toArray(new CompletableFuture[0]));
-
-        // convert the type from Void to List<String> using .join()
-        final CompletableFuture<List<String>> allPageContentsFuture = allFutures.thenApply(v -> pageContentFutures
-            .stream()
-            .map(CompletableFuture::join)
-            .collect(toList())
-        );
+        // call all these futures in parallel ...
+        final CompletableFuture<List<String>> allPageContentsFuture = CompletableFuture
+            .allOf(pageContentFuturesArray)
+            // ... and when all responses have been received ...
+            .thenApply(v -> Arrays.stream(pageContentFuturesArray)
+                // ... join the results into a list of Strings
+                .map(CompletableFuture::join)
+                .collect(toList())
+            );
 
         // Count the number of web pages containing a certain word
         final String term = "html";
-        CompletableFuture<Long> countFuture = allPageContentsFuture.thenApply(pageContents -> pageContents.stream()
-            .filter(pageContent -> pageContent.toLowerCase().contains(term))
-            .count());
+        CompletableFuture<Long> countFuture = allPageContentsFuture
+            .thenApply(pageContents -> pageContents
+                .stream()
+                .filter(pageContent -> pageContent.toLowerCase().contains(term))
+                .count());
         System.out.format("'%s' was found in %s websites.\r\n", term.toLowerCase(), countFuture.get());
 
         System.out.println("ALL OF (END)");
