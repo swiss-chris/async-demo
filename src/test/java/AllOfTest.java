@@ -19,6 +19,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.function.Predicate.not;
 import static java.util.stream.Collectors.toList;
 
+// inspired by https://www.callicoder.com/java-8-completablefuture-tutorial/
 public class AllOfTest {
 
     @Test
