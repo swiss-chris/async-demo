@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -21,12 +22,18 @@ import static java.util.stream.Collectors.toList;
 public class AllOfTest {
 
     @Test
-    public void allOf() throws IOException, ExecutionException, InterruptedException {
+    public void allOf() throws IOException {
         final var httpClient = HttpClient.newHttpClient();
         final var bodyHandler = HttpResponse.BodyHandlers.ofString();
 
+        // stop watch
+        final AtomicLong allOfTime = new AtomicLong();
+        final AtomicLong anyOfTime = new AtomicLong();
+        final AtomicLong firstMatchTime = new AtomicLong();
+
         // get a list of URLs to call
         final List<String> urls = Files.readAllLines(Paths.get("src/test/resources/urls.txt"));
+        //        final List<String> urls = Files.readAllLines(Paths.get("src/test/resources/urls.withbroken.txt"));
 
         // map to a list of Futures containing the static html from these urls
         final CompletableFuture<String>[] pageContentFuturesArray = urls
@@ -45,6 +52,7 @@ public class AllOfTest {
         //// ---- ALL OF ---- ////
         CompletableFuture allOf = CompletableFuture.runAsync(() -> {
             System.out.println("ALL OF (BEGIN)");
+            long start = System.currentTimeMillis();
 
             final String term = "html";
             CompletableFuture<Long> countFuture = CompletableFuture
@@ -68,6 +76,9 @@ public class AllOfTest {
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
+
+            allOfTime.set(System.currentTimeMillis() - start);
+
             System.out.format("'%s' was found in %s websites.\r\n", term.toLowerCase(), count);
 
             System.out.println("ALL OF (END)");
@@ -76,6 +87,7 @@ public class AllOfTest {
         //// ---- ANY OF ---- ////
         CompletableFuture anyOf = CompletableFuture.runAsync(() -> {
             System.out.println("ANY OF (BEGIN)");
+            long start = System.currentTimeMillis();
 
             // call all these futures in parallel and store only the first result in another future
             try {
@@ -90,6 +102,7 @@ public class AllOfTest {
                 e.printStackTrace();
             }
 
+            anyOfTime.set(System.currentTimeMillis() - start);
             System.out.println("ANY OF (END)");
         });
 
@@ -97,6 +110,7 @@ public class AllOfTest {
         //// ---- FIRST MATCHING ---- ////
         CompletableFuture firstMatching = CompletableFuture.runAsync(() -> {
             System.out.println("FIRST MATCHING (BEGIN)");
+            long start = System.currentTimeMillis();
 
             // call all these futures in parallel and store only the first result in another future
             firstMatching(not(String::isEmpty), pageContentFuturesArray)
@@ -104,10 +118,23 @@ public class AllOfTest {
                 .orTimeout(2, SECONDS)
             ;
 
+            firstMatchTime.set(System.currentTimeMillis() - start);
             System.out.println("FIRST MATCHING (END)");
         });
 
-        CompletableFuture.allOf(allOf, anyOf, firstMatching).get();
+        try {
+            // don't use .orTimeout() !!!
+            // https://stackoverflow.com/questions/64807597/unexpected-behavior-for-completablefuture-allof-ortimeout
+            CompletableFuture.allOf(allOf, anyOf, firstMatching).get();
+//            CompletableFuture.allOf(allOf, anyOf, firstMatching).get(5, SECONDS);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            System.out.format("ALL OF execution time: %s milliseconds.\r\n", allOfTime);
+            System.out.format("ANY OF OF execution time: %s milliseconds.\r\n", anyOfTime);
+            System.out.format("FIRST MATCH execution time: %s milliseconds.\r\n", firstMatchTime);
+        }
+
     }
 
     private HttpRequest createRequest(final String url) {
@@ -119,8 +146,9 @@ public class AllOfTest {
         final CompletableFuture<T> promise = new CompletableFuture<>();
         for (CompletableFuture<T> future : futures) {
             future.thenAccept(result -> {
-                if (predicate.test(result) && completed.compareAndSet(false, true))
+                if (predicate.test(result) && completed.compareAndSet(false, true)) {
                     promise.complete(result);
+                }
             });
         }
         return promise;
