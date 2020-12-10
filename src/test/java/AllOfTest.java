@@ -149,10 +149,9 @@ public class AllOfTest {
 
             // call all these futures in parallel and store only the first result in another future
             firstMatching(not(String::isEmpty).and(contains(searchedString)), pageContentFuturesArray)
-                .thenAccept(nonEmptyResponse -> {
-                    System.out.format("FIRST MATCHING received non empty response containing '%s': %s\r\n", searchedString, nonEmptyResponse);
-                })
-                .orTimeout(2, SECONDS)
+                .thenAccept(nonEmptyResponse ->
+                    System.out.format("FIRST MATCHING received non empty response containing '%s': %s\r\n", searchedString, nonEmptyResponse)
+                ).orTimeout(2, SECONDS)
             ;
 
             firstMatchTime.set(System.currentTimeMillis() - start);
@@ -162,7 +161,7 @@ public class AllOfTest {
         try {
             // don't use .orTimeout() !!!
             // https://stackoverflow.com/questions/64807597/unexpected-behavior-for-completablefuture-allof-ortimeout
-//            CompletableFuture.allOf(allOf, allOfSimplified, anyOf, firstMatching).get();
+            // CompletableFuture.allOf(allOf, allOfSimplified, anyOf, firstMatching).get();
             CompletableFuture.allOf(allOf, allOfSimplified, anyOf, firstMatching).get(5, SECONDS);
         } catch (Exception e) {
             e.printStackTrace();
